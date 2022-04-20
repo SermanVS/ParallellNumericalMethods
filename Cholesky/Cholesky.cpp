@@ -4,7 +4,6 @@
 #include <ctime>
 using namespace std;
 
-
 void Cholesky_Decomposition(double* A, double* L, int n);
 
 /*
@@ -84,6 +83,12 @@ double* generate_matrix(int N)
   return matrix;
 }
 
+/*
+  Prints matrix A.
+  A [in] - Matrix to print.
+  N [in] - Rows in A.
+  M [in] - Cols in A.
+*/
 void pr(double* A, int N, int M)
 {
   for (int i = 0; i < N; ++i)
@@ -100,6 +105,7 @@ void pr(double* A, int N, int M)
   Standard Cholesky decomposition.
   matrix [in]- A matrix of the system.
   L [out] - Output matrix L.
+  N [in] - Dimension of square matrix.
 */
 void Cholesky_Decomposition_standard(double* A, double* L, int N)
 {
@@ -111,7 +117,6 @@ void Cholesky_Decomposition_standard(double* A, double* L, int N)
       L[i * N + i] -= L[i * N + k] * L[i * N + k];
     }
     L[i * N + i] = sqrt(L[i * N + i]);
-
     for (int j = i + 1; j < N; ++j)
     {
       L[j * N + i] = A[j * N + i];
@@ -175,6 +180,7 @@ double* invertLT(const double* L, int r)
   Calculates the L21 block from formula L21 * L11^T = A21.
   L11 [in] - L11 block of the L matrix.
   A21 [in] - A21 block of the A matrix.
+  Ns [in] - Number of rows in L21.
   r [in] - Block size.
   Returns: L21 block of the L matrix.
   Remarks: It's written as xA=b. So, x = b * (A^-1). We need to calculate
@@ -182,9 +188,8 @@ double* invertLT(const double* L, int r)
   Here we need to decide what's faster - inversion of one matrix, or
   transposition of two matrices. We'll check that on some tests.
 */
-double* get_L21(double* L11, double* A21, int N, int r)
+double* get_L21(double* L11, double* A21, int Ns, int r)
 {
-  int Ns = N - r;
   double* L21 = new double[Ns * r];
   memset(L21, 0, (Ns * r) * sizeof(*L21));
   double* inv_L11 = invertLT(L11, r);
@@ -209,7 +214,15 @@ double* get_L21(double* L11, double* A21, int N, int r)
   A11 [out] - Top left block.
   A21 [out] - Bottom left block.
   A22 [out] - Bottom right block.
+  N [in] - Dimension of square matrix A.
   r [in] - B.lock size.
+  i0 [in] - Starting row to count from.
+  j0 [in] - Starting col to count from.
+  Remarks:
+    We need starting row and col because we update
+    the matrix A on the go and we need to work only with the
+    updated part.
+    
 */
 void get_slices(const double* A, double* A11, double* A21, double* A22, int N, int r, int i0, int j0)
 {
@@ -239,8 +252,19 @@ void get_slices(const double* A, double* A11, double* A21, double* A22, int N, i
 
 /*
   Composes L out of blocks.
+  L [out] - L matrix to compose.
+  L11 [in] - L11 block (top left).
+  L21 [in] - L21 block (bottom left).
+  r [in] - Block size.
+  N [in] - Dimension of square matrix L.
+  i0 [in] - Starting row to count from.
+  j0 [in] - Starting col to count from.
+  Remarks:
+    We need starting row and col because we update
+    the matrix L on the go and we need to work only with the
+    part that hasn't been updated.
 */
-double* composeL(double* L, double* L11, double* L21, int r, int N, int i0, int j0)
+void composeL(double* L, double* L11, double* L21, int r, int N, int i0, int j0)
 {
   int len1 = 0, len2 = 0;
   for (int i = i0; i < i0 + r; ++i)
@@ -257,17 +281,24 @@ double* composeL(double* L, double* L11, double* L21, int r, int N, int i0, int 
       L[i * N + j] = L21[len2++];
     }
   }
-  return L;
 }
 
 
 
 /*
   Calculates A22 tilde matrix. (A22 - L21*L21^T).
+  A [in] - Matrix A to take elements from.
   A22 [in] - A22 matrix.
   L21 [in] - L21 matrix.
+  N [in] - Dimension of the square matrix A.
   Ns [in] - Number of rows in L21.
   r [in] - Number of cols in L21.
+  i0 [in] - Starting row to count from.
+  j0 [in] - Starting col to count from.
+  Remarks:
+    We need starting row and col because we update
+    the matrix A on the go and we need to work only with the
+    updated part.
 */
 void getA22tilde(double* A, double* A22, double* L21, int N, int Ns, int r, int i0, int j0)
 {
@@ -308,11 +339,17 @@ void getA22tilde(double* A, double* A22, double* L21, int N, int Ns, int r, int 
 void Cholesky_Decomposition(double* A, double* L, int N)
 {
   double* A11 = nullptr, * A21 = nullptr, * A22 = nullptr, * L11 = nullptr, * L21 = nullptr, * L22 = nullptr;
-  int r = 2;
+  int r = 3;
   int Ns = N;
   int numOfIterations = N / r - 1;
   int i0 = 0;
   int j0 = 0;
+
+  if (r >= N)
+  {
+    Cholesky_Decomposition_standard(A, L, N);
+    return;
+  }
 
   for (int i = 0; i < numOfIterations; ++i)
   { 
@@ -332,7 +369,7 @@ void Cholesky_Decomposition(double* A, double* L, int N)
     get_slices(A, A11, A21, A22, N, r, i0, j0);
 
     L11 = get_L11(A11, r);
-    L21 = get_L21(L11, A21, Ns, r);
+    L21 = get_L21(L11, A21, Ns - r, r);
 
     composeL(L, L11, L21, r, N, i0, j0); 
 
@@ -387,8 +424,7 @@ void print_result(const double* matrix, int N, double* L)
 
   cout << endl;
 
-  // Print matrix L.
-  
+  // Print matrix L. 
   for (int i = 0; i < N; ++i)
   {
     for (int j = 0; j < N; ++j)
@@ -405,18 +441,16 @@ void print_result(const double* matrix, int N, double* L)
 int main()
 {
   srand(time(NULL));
-  const int N = 6;
+  const int N = 10;
+  time_t begin, end;
+
   double* matrix = generate_matrix(N);
   double* matrix2 = new double[N * N];
   copy(matrix, matrix + N * N, matrix2);
   double* L = new double [N * N];
-  double* L2 = new double[N * N];
   double* product = new double[N * N];
 
-
   memset(L, 0, (N*N) * sizeof(* L));
-  memset(L2, 0, N * N * sizeof(*L));
-  time_t begin, end;
 
   begin = clock();
   Cholesky_Decomposition(matrix, L, N);

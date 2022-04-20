@@ -1,0 +1,18 @@
+﻿  Cholesky.cpp
+E:\temp\PNM\Cholesky\Cholesky\Cholesky.cpp(30,25): warning C4244: '=': conversion from 'double' to '_Ty', possible loss of data
+          with
+          [
+              _Ty=int
+          ]
+E:\temp\PNM\Cholesky\Cholesky\Cholesky.cpp(51,24): warning C4244: '=': conversion from 'double' to '_Ty', possible loss of data
+          with
+          [
+              _Ty=int
+          ]
+E:\temp\PNM\Cholesky\Cholesky\Cholesky.cpp(97,13): warning C4244: 'argument': conversion from 'time_t' to 'unsigned int', possible loss of data
+  Generating code
+  11 of 76 functions (14.5%) were compiled, the rest were copied from previous compilation.
+    0 functions were new in current compilation
+    0 functions had inline decision re-evaluated but remain unchanged
+  Finished generating code
+  Cholesky.vcxproj -> E:\temp\PNM\Cholesky\Cholesky\Release\Cholesky.exe

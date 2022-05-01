@@ -109,12 +109,13 @@ void pr(double* A, int N, int M)
 */
 void Cholesky_Decomposition_standard(double* A, double* L, int N)
 {
+  memset(L, 0, N * N * sizeof(*L));
   for (int i = 0; i < N; ++i)
   {
     L[i * N + i] = A[i * N + i];
     for (int k = 0; k < i; ++k)
     {
-      L[i * N + i] -= L[i * N + k] * L[i * N + k];
+      L[i * N + i] -= L[i * N + k] * L[i * N + k];  
     }
     L[i * N + i] = sqrt(L[i * N + i]);
     for (int j = i + 1; j < N; ++j)
@@ -138,14 +139,7 @@ void Cholesky_Decomposition_standard(double* A, double* L, int N)
 double* get_L11(double* A11, int r)
 {
   double* L11 = new double [r * r];
-  memset(L11, 0, (r * r) * sizeof(*L11));
   Cholesky_Decomposition_standard(A11, L11, r);
-
-  double* L11_tr = transpose(L11, r, r);
-  double* product = new double[r * r];
-  memset(product, 0, r * r * sizeof(*product));
-  prod(L11, L11_tr, product, r, r);
-
   return L11;
 }
 
@@ -204,7 +198,8 @@ double* get_L21(double* L11, double* A21, int Ns, int r)
       }
     }
   }
-  
+  delete[] inv_L11;
+  delete[] inv_transp_L11;
   return L21;
 }
 
@@ -329,7 +324,22 @@ void getA22tilde(double* A, double* A22, double* L21, int N, int Ns, int r, int 
   delete[] L21_transp;
 }
 
-
+bool is_lower(double* L, int N)
+{
+  bool isLower = true;
+  for (int row = 0; row < N; row++)
+  {
+    for (int col = 0; col < N; col++)
+    {
+      if (col > row && L[row * N + col] != 0)
+      {
+        isLower = false;
+        break;
+      }
+    }
+  }
+  return isLower;
+}
 /*
   Block Cholesky decomposition. (A = L * L^T)
   A [in] - A matrix of the system.
@@ -339,13 +349,13 @@ void getA22tilde(double* A, double* A22, double* L21, int N, int Ns, int r, int 
 void Cholesky_Decomposition(double* A, double* L, int N)
 {
   double* A11 = nullptr, * A21 = nullptr, * A22 = nullptr, * L11 = nullptr, * L21 = nullptr, * L22 = nullptr;
-  int r = 3;
+  int r = 500;
   int Ns = N;
-  int numOfIterations = N / r - 1;
+  int numOfIterations = N / r;
   int i0 = 0;
   int j0 = 0;
 
-  if (r >= N)
+  if ((r >= N) || (N - r < 2))
   {
     Cholesky_Decomposition_standard(A, L, N);
     return;
@@ -380,9 +390,8 @@ void Cholesky_Decomposition(double* A, double* L, int N)
   delete[] A11;
   delete[] A21;
   delete[] L11;
-  
+
   L22 = new double[Ns * Ns];
-  memset(L22, 0, Ns * Ns * sizeof(*L22));
   double* A22_tilde = new double[Ns * Ns];
   getA22tilde(A22_tilde, A22, L21, Ns, Ns, r, 0, 0);
   Cholesky_Decomposition_standard(A22_tilde, L22, Ns);
@@ -437,29 +446,48 @@ void print_result(const double* matrix, int N, double* L)
   cout << endl;
 }
 
+bool compare(double* A1, double* A2, int N)
+{
+  bool equal = true;
+  for (int i = 0; i < N; ++i)
+  {
+    for (int j = 0; j < N; ++j)
+    {
+      if (fabs(A1[i * N + j] - A2[i * N + j]) > 0.001)
+      {
+        equal = false;
+      }
+    }
+  }
+  return equal;
+}
 // Driver Code
 int main()
 {
   srand(time(NULL));
-  const int N = 10;
+  const int N = 1000;
   time_t begin, end;
 
   double* matrix = generate_matrix(N);
   double* matrix2 = new double[N * N];
   copy(matrix, matrix + N * N, matrix2);
   double* L = new double [N * N];
-  double* product = new double[N * N];
-
+  double* L2 = new double[N * N];
   memset(L, 0, (N*N) * sizeof(* L));
-
+  memset(L2, 0, (N * N) * sizeof(*L2));
   begin = clock();
   Cholesky_Decomposition(matrix, L, N);
   end = clock();
 
-  print_result(matrix2, N, L);
+  //print_result(matrix2, N, L);
   cout << "Total time: " << (end - begin) / 1000.0 << endl;
+  cout << "Compare with standard" << endl;
 
+  Cholesky_Decomposition_standard(matrix2, L2, N);
+
+  cout << "Answers are equal: " << compare(L, L2, N) << endl;
   delete[] L;
   delete[] matrix;
+  delete[] matrix2;
   return 0;
 }

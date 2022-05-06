@@ -1,7 +1,7 @@
 #include <iostream>
-#include <vector>
 #include <random>
 #include <ctime>
+#include <omp.h>
 using namespace std;
 
 void Cholesky_Decomposition(double* A, double* L, int n);
@@ -13,7 +13,7 @@ void Cholesky_Decomposition(double* A, double* L, int n);
   m [in] - Number of cols in matrix.
   Returns: M - transposed matrix L.
 */
-double* transpose(double* L, int n, int m)
+double* transpose(double* L, int64_t n, int64_t m)
 {
   double* M = new double[m * n];
   memset(M, 0, n * m * sizeof(*M));
@@ -55,7 +55,7 @@ void prod(double* A, double* B, double* product, int Ns, int r)
   N [in] - Size of matrix (N x N).
   Returns: Matrix of size N x N that is symmetrical and positive-definite.
 */
-double* generate_matrix(int N)
+double* generate_matrix(int64_t N)
 {
   // Generate a random matrix M
   double* matrix = new double [N * N];
@@ -64,7 +64,7 @@ double* generate_matrix(int N)
   {
     for (int j = i + 1; j < N; ++j)
     {
-      matrix[i * N + j] = 1 + rand() % 100;
+      matrix[i * N + j] = int64_t(1) + int64_t(rand() % 100);
       matrix[j * N + i] = matrix[i * N + j];
     }
   }
@@ -107,21 +107,25 @@ void pr(double* A, int N, int M)
   L [out] - Output matrix L.
   N [in] - Dimension of square matrix.
 */
-void Cholesky_Decomposition_standard(double* A, double* L, int N)
+
+void Cholesky_Decomposition_standard(double* A, double* L, int64_t N)
 {
   memset(L, 0, N * N * sizeof(*L));
-  for (int i = 0; i < N; ++i)
+  int i, j, k;
+  for (i = 0; i < N; ++i)
   {
     L[i * N + i] = A[i * N + i];
-    for (int k = 0; k < i; ++k)
+    for (k = 0; k < i; ++k)
     {
       L[i * N + i] -= L[i * N + k] * L[i * N + k];  
     }
+#pragma omp single
     L[i * N + i] = sqrt(L[i * N + i]);
-    for (int j = i + 1; j < N; ++j)
+#pragma omp parallel for shared(L) private(j, k) num_threads(1)
+    for (j = i + 1; j < N; ++j)
     {
       L[j * N + i] = A[j * N + i];
-      for (int k = 0; k < i; ++k)
+      for (k = 0; k < i; ++k)
       {
         L[j * N + i] -= L[i * N + k] * L[j * N + k];
       }
@@ -136,7 +140,7 @@ void Cholesky_Decomposition_standard(double* A, double* L, int N)
   r [in] - Block size.
   Returns: L11 block of the L matrix.
 */
-double* get_L11(double* A11, int r)
+double* get_L11(double* A11, int64_t r)
 {
   double* L11 = new double [r * r];
   Cholesky_Decomposition_standard(A11, L11, r);
@@ -149,7 +153,7 @@ double* get_L11(double* A11, int r)
   r [in] - Block size, here it means number of elements in a row.
   Returns: M - inverted matrix L.
 */
-double* invertLT(const double* L, int r)
+double* invertLT(const double* L, int64_t r)
 {
   double* M = new double [r * r];
   memset(M, 0, (r * r) * sizeof(*M));
@@ -182,7 +186,7 @@ double* invertLT(const double* L, int r)
   Here we need to decide what's faster - inversion of one matrix, or
   transposition of two matrices. We'll check that on some tests.
 */
-double* get_L21(double* L11, double* A21, int Ns, int r)
+double* get_L21(double* L11, double* A21, int64_t Ns, int64_t r)
 {
   double* L21 = new double[Ns * r];
   memset(L21, 0, (Ns * r) * sizeof(*L21));
@@ -219,7 +223,7 @@ double* get_L21(double* L11, double* A21, int Ns, int r)
     updated part.
     
 */
-void get_slices(const double* A, double* A11, double* A21, double* A22, int N, int r, int i0, int j0)
+void get_slices(const double* A, double* A11, double* A21, double* A22, int64_t N, int64_t r, int i0, int j0)
 {
   int len1 = 0, len2 = 0, len3 = 0;
   for (int i = i0; i < N; i++)
@@ -259,7 +263,7 @@ void get_slices(const double* A, double* A11, double* A21, double* A22, int N, i
     the matrix L on the go and we need to work only with the
     part that hasn't been updated.
 */
-void composeL(double* L, double* L11, double* L21, int r, int N, int i0, int j0)
+void composeL(double* L, double* L11, double* L21, int64_t r, int64_t N, int i0, int j0)
 {
   int len1 = 0, len2 = 0;
   for (int i = i0; i < i0 + r; ++i)
@@ -295,7 +299,7 @@ void composeL(double* L, double* L11, double* L21, int r, int N, int i0, int j0)
     the matrix A on the go and we need to work only with the
     updated part.
 */
-void getA22tilde(double* A, double* A22, double* L21, int N, int Ns, int r, int i0, int j0)
+void getA22tilde(double* A, double* A22, double* L21, int64_t N, int64_t Ns, int64_t r, int i0, int j0)
 {
   double* L21_transp = transpose(L21, Ns, r);
   double* product = new double[Ns * Ns];
@@ -349,8 +353,8 @@ bool is_lower(double* L, int N)
 void Cholesky_Decomposition(double* A, double* L, int N)
 {
   double* A11 = nullptr, * A21 = nullptr, * A22 = nullptr, * L11 = nullptr, * L21 = nullptr, * L22 = nullptr;
-  int r = 500;
-  int Ns = N;
+  int64_t r = 100;
+  int64_t Ns = N;
   int numOfIterations = N / r;
   int i0 = 0;
   int j0 = 0;
@@ -361,7 +365,7 @@ void Cholesky_Decomposition(double* A, double* L, int N)
     return;
   }
 
-  for (int i = 0; i < numOfIterations; ++i)
+  for (int64_t i = 0; i < numOfIterations; ++i)
   { 
     A11 = new double[r * r];
     memset(A11, 0, (r * r) * sizeof(*A11));
@@ -446,46 +450,57 @@ void print_result(const double* matrix, int N, double* L)
   cout << endl;
 }
 
-bool compare(double* A1, double* A2, int N)
+bool compare(double* A, double* L, int64_t N)
 {
   bool equal = true;
+  double* L_tr = transpose(L, N, N);
+  double* LL_tr = new double[N * N];
+  prod(L, L_tr, LL_tr, N, N);
+  double* diff = new double[N * N];
+
   for (int i = 0; i < N; ++i)
   {
     for (int j = 0; j < N; ++j)
     {
-      if (fabs(A1[i * N + j] - A2[i * N + j]) > 0.001)
-      {
-        equal = false;
-      }
+      diff[i * N + j] = LL_tr[i * N + j] - A[i * N + j];
     }
   }
-  return equal;
+
+  double sum1 = 0, sum2 = 0;
+  for (int i = 0; i < N; ++i)
+  {
+    for (int j = 0; j < N; ++j)
+    {
+      sum1 += diff[i * N + j] * diff[i * N + j];
+      sum2 += A[i * N + j] * A[i * N + j];
+    }
+  }
+
+  return (sqrt(sum1) / sqrt(sum2) < 0.01);
 }
 // Driver Code
 int main()
 {
   srand(time(NULL));
-  const int N = 1000;
+  const int N = 500;
   time_t begin, end;
 
   double* matrix = generate_matrix(N);
   double* matrix2 = new double[N * N];
+
   copy(matrix, matrix + N * N, matrix2);
+
   double* L = new double [N * N];
-  double* L2 = new double[N * N];
+
   memset(L, 0, (N*N) * sizeof(* L));
-  memset(L2, 0, (N * N) * sizeof(*L2));
   begin = clock();
   Cholesky_Decomposition(matrix, L, N);
   end = clock();
 
   //print_result(matrix2, N, L);
-  cout << "Total time: " << (end - begin) / 1000.0 << endl;
-  cout << "Compare with standard" << endl;
-
-  Cholesky_Decomposition_standard(matrix2, L2, N);
-
-  cout << "Answers are equal: " << compare(L, L2, N) << endl;
+  cout << "Total time with block: " << (end - begin) / 1000.0 << endl;
+  cout << "Norm ratio is good: " << compare(matrix2, L, N) << endl;
+  
   delete[] L;
   delete[] matrix;
   delete[] matrix2;
